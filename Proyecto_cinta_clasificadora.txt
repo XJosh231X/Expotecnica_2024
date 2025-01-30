@@ -1,0 +1,237 @@
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>  // incluye libreria de Servo
+#include <avr/io.h>
+//lcd
+int sda = A4;
+int scl = A5;
+//panel
+int startPanel = 11;  //botón de start
+int pinStop = 13;    //botón de stop
+//sensor color
+#define S0 4         // S0 a pin 4
+#define S1 5         // S1 a pin 5
+#define S2 6         // S2 a pin 6
+#define S3 7         // S3 a pin 7
+#define salidaTCS 8  // salidaTCS a pin 8  
+//servo
+int rojo, azul, verde;
+Servo servo1;      // crea objeto
+int pinServo = 3;  // pin 2 conectado a señal del servo
+int rd = 0;        //variable para almacenar valor de conteo de rojo
+int gr = 0;        //variable para almacenar valor de conteo de verde
+int bl = 0;        //variable para almacenar valor de conteo de azul
+//motor
+int IN3 = 12;       //pin digital ln298n
+int IN4 = 9;       //pin digital ln298n
+int ENB = 10;      //pin PWM
+int vMotor = 255;  //velocidad motor
+int x = 0;
+int y = 0;
+bool iniciar = false; //variable boolean que se usa para la función del panel
+int stop = 0;
+int start1 = 0;
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+void setup() {
+  servo1.attach(pinServo);  // inicializacion de servo
+  pinMode(S0, OUTPUT);        // pin 4 como salida
+  pinMode(S1, OUTPUT);        // pin 5 como salida
+  pinMode(S2, OUTPUT);        // pin 6 como salida
+  pinMode(S3, OUTPUT);        // pin 7 como salida
+  pinMode(salidaTCS, INPUT);  // pin 8 como salida
+  pinMode(sda, INPUT);        //pin A4 como entrada
+  pinMode(scl, INPUT);        //pin A5 como entrada
+  pinMode(IN3, OUTPUT); // pin 8 como salida
+  pinMode(IN4, OUTPUT); // pin 9 como salida
+  pinMode(ENB, OUTPUT); // pin 10 como salida
+  digitalWrite(S0, HIGH);  // establece frecuencia de salida
+  digitalWrite(S1, LOW);   // del modulo al 20 por ciento
+  Serial.begin(9900);  // inicializa monitor serie a 9900 bps
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();    
+}
+
+void loop() 
+{
+  Serial.print(" variable:");  // muestra texto
+  Serial.print(iniciar);  // muestra valor de variable rojo
+  Serial.print(" /n start1:");  // muestra texto
+  Serial.print(digitalRead(startPanel));  // muestra valor de variable rojo
+  Serial.print(" /n stop:");  // muestra texto
+  Serial.print(digitalRead(pinStop));  // muestra valor de variable rojo
+  start1 = digitalRead(startPanel); //lectura del pin 11
+  stop = digitalRead(pinStop); //lectura del pin 13
+  (start1 == 1 && iniciar != true) ? toggle(iniciar) : true;  //se utiliza para hacer evitar hacer un bucle cuando se presionen los botones de start y stop
+  (stop == 1 && iniciar != false)  ? toggle(iniciar) : true;
+
+  if(iniciar == true)      //botón de inicio en el panel
+  {
+     start();             //función cinta
+     stop = 0;
+     start1 = 0;
+  } else
+  {
+     motor(0);            //apaga motor
+  }    
+
+}
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+void start()
+{   
+  motor(1);                             //encendemos cinta
+  digitalWrite(S2, LOW);               // establece fotodiodos
+  digitalWrite(S3, LOW);               // con filtro rojo
+  int rojo = pulseIn(salidaTCS, LOW);  // obtiene duracion de pulso de salida del sensor para establcer los rangos
+  delay(100);                          // demora de 100 mseg
+
+  digitalWrite(S2, HIGH);               // establece fotodiodos
+  digitalWrite(S3, HIGH);               // con filtro verde
+  int verde = pulseIn(salidaTCS, LOW);  // obtiene duracion de pulso de salida del sensor para establcer los rangos
+  delay(100);                           // demora de 100 mseg
+
+  digitalWrite(S2, LOW);               // establece fotodiodos
+  digitalWrite(S3, HIGH);              // con filtro azul
+  int azul = pulseIn(salidaTCS, LOW);  // obtiene duracion de pulso de salida del sensor para establcer los rangos
+  delay(100);                          // demora de 100 mseg
+
+  Serial.print("R:");  // muestra texto
+  Serial.print(rojo);  // muestra valor de variable rojo
+
+  Serial.print("\t");  // espacio de tabulacion
+
+  Serial.print("V:");   // muestra texto
+  Serial.print(verde);  // muestra valor de variable verde
+
+  Serial.print("\t");  // espacio de tabulacion
+
+  Serial.print("A:");    // muestra texto
+  Serial.println(azul);  // muestra valor de variable azul
+                         // y salto de linea
+
+  if ((azul < 135) && (azul > 90) && (rojo < 95) && (rojo > 50 ) && (verde > 140)&&(verde < 170)) // si valores dentro del rango
+  {         
+    Serial.println("ROJO");                             // muestra texto en el monitor serial
+    conteo(1);                                          //cónteo rojo
+  } else if ((azul < 110) && (azul > 90) && (rojo < 155) && (rojo > 100) && (verde > 90)&&(verde < 115)) // si valores dentro del rango
+  { 
+    Serial.println("VERDE");                            // muestra texto en el monitor serial
+    conteo(2);                                          //cónteo verde
+  } else if ((azul < 100) && (azul >60) && (rojo < 190) && (rojo > 125) && (verde > 110)&&(verde < 145)) // si valores dentro del rango
+  {  
+    Serial.println("AZUL");                             // muestra texto en el mmonitor serial
+    conteo(3);                                          //cónteo azul
+  }else
+  { 
+    Serial.println("NO DETECTADO");                    // muestra texto
+  }
+  lcd.setCursor(0, 0);  //*Muestro en pantalla el cónteo de cada color
+  lcd.print("RED");
+  lcd.setCursor(5, 0);
+  lcd.print("GRN");
+  lcd.setCursor(10, 0);
+  lcd.print("BLU");
+  lcd.setCursor(0, 1);
+  lcd.print(rd);
+  lcd.setCursor(5, 1);
+  lcd.print(gr);
+  lcd.setCursor(10, 1);
+  lcd.print(bl);
+ }
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+void conteo(int x) //con el valor de x determino en cuál condición entra, se conoce como parámetro
+{
+  if(x == 1) //Rojo
+  {
+    servo1.write(180);  // ubica el servo a 0 grados
+    rd++;               //contador de rojo para display
+    delay(900);
+  } else if (x == 2) //Verde
+  {
+    servo1.write(90);  // ubica el servo a 90 grados
+    gr++;              //contador de verde para display
+    delay(900);
+  } else if (x == 3)  //Azul
+  {
+    servo1.write(0);  // ubica el servo a 180 grados
+    bl++;             //contador de azul para display
+    delay(900);
+  }
+}
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------
+void configTCS3200()                   //Configuración del sensor de color
+{
+  digitalWrite(S2, LOW);               // establece fotodiodos
+  digitalWrite(S3, LOW);               // con filtro rojo
+  int rojo = pulseIn(salidaTCS, LOW);  // obtiene duracion de pulso de salida del sensor
+  delay(100);  //200                        // demora de 200 mseg
+
+  digitalWrite(S2, HIGH);               // establece fotodiodos
+  digitalWrite(S3, HIGH);               // con filtro verde
+  int verde = pulseIn(salidaTCS, LOW);  // obtiene duracion de pulso de salida del sensor
+  delay(100);  //200                         // demora de 200 mseg
+
+  digitalWrite(S2, LOW);               // establece fotodiodos
+  digitalWrite(S3, HIGH);              // con filtro azul
+  int azul = pulseIn(salidaTCS, LOW);  // obtiene duracion de pulso de salida del sensor
+  delay(100);  //200                        // demora de 200 mseg
+
+  Serial.print("R:");  // muestra texto
+  Serial.print(rojo);  // muestra valor de variable rojo
+
+  Serial.print("\t");  // espacio de tabulacion
+
+  Serial.print("V:");   // muestra texto
+  Serial.print(verde);  // muestra valor de variable verde
+
+  Serial.print("\t");  // espacio de tabulacion
+
+  Serial.print("A:");    // muestra texto
+  Serial.println(azul);  // muestra valor de variable azul
+                         // y salto de linea
+}
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+void motor(int c){ 
+  if(c == 1)
+  {
+    analogWrite(ENB, vMotor); //modificación de velocidad
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+  }
+  else if (c == 0)
+  {
+    digitalWrite(ENB,LOW); // apagamos motor 
+  }
+}
+//----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void counterLCD()
+{
+  lcd.setCursor(0, 0);
+  lcd.print("RED");
+  lcd.setCursor(5, 0);
+  lcd.print("GRN");
+  lcd.setCursor(10, 0);
+  lcd.print("BLU");
+  lcd.setCursor(0, 1);
+  lcd.print(rd);
+  lcd.setCursor(5, 1);
+  lcd.print(gr);
+  lcd.setCursor(10, 1);
+  lcd.print(bl);
+}
+//----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------                              
+bool toggle(int change) {
+  switch (change) {
+      case 0:
+        iniciar = true;
+      break;
+      case 1:
+        iniciar = false;
+      break;
+      default:
+      break;
+    }
+}
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------
